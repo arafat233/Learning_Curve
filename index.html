@@ -1,0 +1,557 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script type="importmap">
+{ "imports": {
+  "onnxruntime-web": "./node_modules/onnxruntime-web/dist/ort.bundle.min.mjs",
+  "onnxruntime-web/webgpu": "./node_modules/onnxruntime-web/dist/ort.webgpu.bundle.min.mjs",
+  "onnxruntime-common": "./node_modules/onnxruntime-common/dist/esm/index.js"
+} }
+</script>
+<style>
+  html,body{margin:0;height:100%;font:13px system-ui;color:#fff;
+    background:rgba(16,16,20,.38);border-radius:12px;overflow:hidden;
+    text-shadow:0 1px 3px #000, 0 0 2px #000;  /* readable over anything behind */
+    -webkit-user-select:none;user-select:none;display:flex;flex-direction:column}
+  #bar{-webkit-app-region:drag;padding:8px 12px;font-weight:600;
+    display:flex;justify-content:space-between;align-items:center;
+    background:rgba(255,255,255,.04);flex:0 0 auto}
+  #bar .r{-webkit-app-region:no-drag;display:flex;gap:8px;align-items:center}
+  button{-webkit-app-region:no-drag;background:#2a2a33;color:#e8e8ea;
+    border:1px solid #3a3a44;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:12px}
+  button:disabled{opacity:.5}
+  .dot{width:8px;height:8px;border-radius:50%;background:#f87171;display:inline-block}
+  .dot.on{background:#4ade80}
+  .pane{padding:10px 12px;overflow-y:auto}
+  #transcript{flex:0 0 26%;border-bottom:1px solid rgba(255,255,255,.08);
+    font-size:12px;opacity:.85;line-height:1.4}
+  #transcript>div{margin:2px 0}
+  #transcript .interim{opacity:.5}
+  #transcript .sp{font-weight:700}
+  #transcript .sp.int{color:#4ade80}   /* interviewer */
+  #transcript .sp.me{color:#60a5fa}    /* you */
+  #answer{flex:1 1 auto;font-size:15px;line-height:1.5}
+  #answer.empty{opacity:.4;font-size:13px}
+  #answer .bl{font-size:17px;font-weight:600;margin:3px 0}            /* glanceable bullets */
+  #answer .pp{font-size:13px;opacity:.72;margin:4px 0;line-height:1.45}/* detail, dimmed */
+  #answer pre{background:rgba(0,0,0,.4);padding:8px;border-radius:6px;overflow-x:auto;font-size:12px;white-space:pre;text-shadow:none}
+  #answer code{background:rgba(0,0,0,.35);padding:1px 4px;border-radius:4px}
+  #followups{flex:0 0 auto;padding:5px 12px;font-size:11px;opacity:.65;
+    border-top:1px solid rgba(255,255,255,.06);display:none}
+  #followups b{opacity:.9}
+  .meters{flex:0 0 auto;padding:6px 12px;display:flex;gap:10px;font-size:10px;
+    background:rgba(255,255,255,.03)}
+  .m{flex:1}
+  .meter{height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:3px}
+  .fill{height:100%;width:0}
+  .int .fill{background:#4ade80}.me .fill{background:#60a5fa}
+  #foot{flex:0 0 auto;padding:6px 12px;font-size:10px;opacity:.55;
+    border-top:1px solid rgba(255,255,255,.06)}
+  #recState{font-size:10px;opacity:.75}
+  #setup{position:fixed;inset:0;background:rgba(7,7,10,.92);z-index:10;
+    display:none;padding:18px;box-sizing:border-box;overflow:auto;text-shadow:none}
+  #setup .panel{max-width:390px;margin:12px auto;background:#17171d;border:1px solid #33343d;
+    border-radius:8px;padding:16px;color:#f3f4f6;box-shadow:0 14px 40px rgba(0,0,0,.35)}
+  #setup h2{margin:0 0 10px;font-size:18px}
+  #setup p{margin:8px 0;color:#c8cad2;line-height:1.4}
+  #setup .checks{display:grid;gap:7px;margin:12px 0}
+  #setup .check{display:flex;justify-content:space-between;gap:10px;padding:8px;border:1px solid #30313a;border-radius:6px;background:#20212a}
+  #setup .ok{color:#4ade80}.bad{color:#f87171}
+  #setup .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  kbd{background:#2a2a33;border-radius:4px;padding:1px 5px;font-size:9px}
+  body.compact #transcript, body.compact .meters, body.compact #foot{display:none}
+  body.compact #answer{font-size:16px}
+</style>
+</head>
+<body>
+  <div id="bar">
+    <span>AI Interview <i class="dot on" title="hidden from screen share"></i></span>
+    <span class="r">
+      <span id="recState">idle</span>
+      <i class="dot" id="livedot" title="transcription active"></i>
+      <button id="go">Live</button>
+      <button id="mock">Mock</button>
+      <button id="story" title="match STAR story">Story</button>
+      <button id="copy" title="copy answer (Ctrl+Shift+Y)">Copy</button>
+      <button id="gear" title="settings">Settings</button>
+    </span>
+  </div>
+  <input id="qbox" placeholder="type a question and press Enter…"
+    style="display:none;margin:6px 12px;padding:7px 9px;border:1px solid #3a3a44;border-radius:6px;
+    background:rgba(34,34,43,.9);color:#e8e8ea;font:13px system-ui;-webkit-app-region:no-drag">
+  <div id="toast" style="display:none;position:fixed;bottom:10px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.75);padding:5px 12px;border-radius:6px;font-size:12px"></div>
+
+  <div id="transcript" class="pane"><span class="interim">Transcript will appear here…</span></div>
+  <div id="setup">
+    <div class="panel">
+      <h2>First Run Setup</h2>
+      <p>Confirm keys, choose speech, test permissions, then start a short mock interview.</p>
+      <div class="checks">
+        <div class="check"><span>Anthropic key</span><b id="s-anthropic">checking</b></div>
+        <div class="check"><span>Deepgram key</span><b id="s-deepgram">checking</b></div>
+        <div class="check"><span>Privacy mode</span><b id="s-privacy">checking</b></div>
+      </div>
+      <label style="display:block;margin-top:10px;font-size:12px;color:#c8cad2">Speech engine</label>
+      <select id="setup-stt" style="width:100%;box-sizing:border-box;background:#22222b;color:#e8e8ea;border:1px solid #3a3a44;border-radius:6px;padding:8px">
+        <option value="sherpa">Sherpa-ONNX local</option>
+        <option value="deepgram">Deepgram cloud</option>
+        <option value="whisper">Whisper local</option>
+      </select>
+      <div class="actions">
+        <button id="setup-mic">Test mic</button>
+        <button id="setup-screen">Test system audio</button>
+        <button id="setup-done">Finish setup</button>
+      </div>
+      <p><small id="calibration">Audio calibration has not run.</small></p>
+      <p><small>Shortcuts: Ctrl+Shift+A answer, Ctrl+Shift+T type, Ctrl+Shift+O settings.</small></p>
+    </div>
+  </div>
+
+  <div id="answer" class="pane empty">Answer appears here. Auto-fires when the interviewer finishes a question, or press Ctrl+Shift+A.</div>
+  <div id="followups"></div>
+
+  <div class="meters">
+    <div class="m int">Interviewer<div class="meter"><div class="fill" id="i-f"></div></div></div>
+    <div class="m me">You<div class="meter"><div class="fill" id="m-f"></div></div></div>
+  </div>
+  <div id="foot">
+    <kbd>Ctrl+Shift+A</kbd> answer &nbsp; <kbd>Ctrl+Shift+S</kbd> solve &nbsp; <kbd>Ctrl+Shift+E</kbd> check &nbsp; <kbd>Ctrl+Shift+H</kbd> hide &nbsp; <kbd>Ctrl+Shift+X</kbd> click-through<br>
+    <kbd>Ctrl+Shift+U</kbd> expand &nbsp; <kbd>Ctrl+Shift+Y</kbd> copy &nbsp; <kbd>Ctrl+Shift+P</kbd> pin &nbsp; <kbd>Ctrl+Shift+T</kbd> type Q &nbsp; <kbd>Ctrl+Shift+R</kbd> region &nbsp; <kbd>Ctrl+Shift+L</kbd> length &nbsp; <kbd>Ctrl+Shift+O</kbd> settings<br>
+    <kbd>Ctrl+Shift+D</kbd> dim &nbsp; <kbd>Ctrl+Shift+C</kbd> compact &nbsp; <kbd>Ctrl+Shift+M</kbd> monitor &nbsp; <kbd>Ctrl+Alt+arrows</kbd> snap
+    &nbsp; <kbd>Ctrl+Shift+G</kbd> panic
+    &nbsp;-&nbsp; <span id="msg">idle</span>
+    <button id="report" style="display:none;float:right;padding:2px 7px">Report</button>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const msg = $('msg'), tEl = $('transcript'), aEl = $('answer'), fuEl = $('followups'), recState = $('recState');
+
+let turns = [];          // finalized transcript segments: {who, text}
+let interims = { Interviewer: '', You: '' };  // in-progress per speaker
+let utteranceStarted = { Interviewer: 0, You: 0 };
+let pending = '';        // driving speaker's text since last trigger
+let answering = false;
+let mode = 'idle';       // 'live' | 'mock'
+let answerRaw = '';      // accumulated answer text (rendered as markdown)
+let currentQuestion = '';
+let settings = { sttLang: 'en-US', length: 'medium' };
+
+function markSetup(id, ok, text){
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text || (ok ? 'ok' : 'missing');
+  el.className = ok ? 'ok' : 'bad';
+}
+async function refreshSetup(){
+  const status = await window.api.getAppStatus();
+  markSetup('s-anthropic', status.hasAnthropicKey || settings.backend === 'cli' || settings.backend === 'local' || status.localOnly, status.hasAnthropicKey ? 'ready' : (settings.backend === 'cli' ? 'CLI' : (settings.backend === 'local' ? 'local' : 'missing')));
+  markSetup('s-deepgram', status.hasDeepgramKey || settings.stt !== 'deepgram' || status.localOnly, status.hasDeepgramKey ? 'ready' : (settings.stt === 'deepgram' ? 'missing' : 'not used'));
+  markSetup('s-privacy', true, status.localOnly ? 'local-only' : 'cloud allowed');
+  if ($('setup-stt')) $('setup-stt').value = settings.stt || 'sherpa';
+  if (!settings.onboardingComplete) $('setup').style.display = 'block';
+}
+
+// --- tiny markdown -> HTML for glanceable bullets + dimmed detail + code ---
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function renderAnswer(raw){
+  const blocks = [];
+  let s = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, l, c) => { blocks.push(c); return `[[CODE_BLOCK_${blocks.length-1}]]`; });
+  s = esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  aEl.innerHTML = s.split('\n').map(line => {
+    const ph = line.match(/^\[\[CODE_BLOCK_(\d+)\]\]$/);
+    if (ph) return `<pre>${esc(blocks[+ph[1]])}</pre>`;
+    const m = line.match(/^\s*[-*]\s+(.*)/);
+    return m ? `<div class="bl">• ${m[1]}</div>` : (line.trim() ? `<div class="pp">${line}</div>` : '');
+  }).join('');
+  aEl.scrollTop = aEl.scrollHeight;
+}
+function startAnswer(){ answerRaw = ''; aEl.classList.remove('empty'); aEl.innerHTML = '...'; fuEl.style.display = 'none'; }
+
+function speakerLabel(who){ return `<b class="sp ${who === 'You' ? 'me' : 'int'}">${who}:</b> `; }
+function pushFinal(who, text){
+  const words = (text.match(/\S+/g) || []).length;
+  const started = utteranceStarted[who] || (performance.now() - Math.max(2500, words * 420));
+  const durationMs = Math.max(1000, performance.now() - started);
+  try { window.api.logSpeechMetric({ who, text, words, durationMs, source: settings.stt || 'stt' }); } catch {}
+  const last = turns[turns.length - 1];
+  if (last && last.who === who) last.text = (last.text + ' ' + text).trim();  // merge same speaker
+  else turns.push({ who, text });
+  interims[who] = '';
+  utteranceStarted[who] = 0;
+}
+function lastText(who){ for (let i = turns.length - 1; i >= 0; i--) if (turns[i].who === who) return turns[i].text; return ''; }
+function transcriptForLLM(){ return turns.slice(-12).map(t => `${t.who}: ${t.text}`).join('\n'); }
+function renderTranscript(){
+  let html = turns.map(t => `<div>${speakerLabel(t.who)}${esc(t.text)}</div>`).join('');
+  for (const who of ['Interviewer', 'You'])
+    if (interims[who]) html += `<div class="interim">${speakerLabel(who)}${esc(interims[who])}</div>`;
+  tEl.innerHTML = html;
+  tEl.scrollTop = tEl.scrollHeight;
+}
+
+function level(stream, fillId){
+  const ctx = new AudioContext();
+  const an = ctx.createAnalyser(); an.fftSize = 512;
+  ctx.createMediaStreamSource(stream).connect(an);
+  const buf = new Uint8Array(an.frequencyBinCount), fill = $(fillId);
+  (function tick(){
+    an.getByteTimeDomainData(buf);
+    let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v-128));
+    fill.style.width = Math.min(100, peak/128*200).toFixed(0)+'%';
+    requestAnimationFrame(tick);
+  })();
+}
+
+async function calibrateStream(stream, label){
+  const ctx = new AudioContext();
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser();
+  an.fftSize = 1024;
+  src.connect(an);
+  const buf = new Uint8Array(an.frequencyBinCount);
+  let peak = 0, sum = 0, frames = 0;
+  const started = performance.now();
+  return await new Promise(resolve => {
+    (function tick(){
+      an.getByteTimeDomainData(buf);
+      let framePeak = 0, frameSum = 0;
+      for (const v of buf) {
+        const n = Math.abs(v - 128) / 128;
+        framePeak = Math.max(framePeak, n);
+        frameSum += n * n;
+      }
+      peak = Math.max(peak, framePeak);
+      sum += frameSum / buf.length;
+      frames++;
+      if (performance.now() - started < 1800) return requestAnimationFrame(tick);
+      const rms = Math.sqrt(sum / Math.max(1, frames));
+      const state = peak < 0.015 ? 'silent' : peak < 0.06 ? 'quiet' : peak > 0.92 ? 'clipping' : 'good';
+      try { ctx.close(); } catch {}
+      resolve(`${label}: ${state} (peak ${(peak * 100).toFixed(0)}%, rms ${(rms * 100).toFixed(0)}%)`);
+    })();
+  });
+}
+
+// Manual answer-now (live): answer the interviewer's latest.
+function askClaude(){
+  const q = (pending || interims.Interviewer || lastText('Interviewer')).trim();
+  if (!q || answering) return;
+  answering = true; pending = '';
+  currentQuestion = q;
+  startAnswer();
+  window.api.smartAnswer({ question: q, transcript: transcriptForLLM() });
+}
+
+// Fired when the DRIVING speaker finishes a sentence.
+function fire(){
+  const q = pending.trim(); pending = '';
+  if (!q || answering) return;
+  answering = true;
+  if (mode === 'mock') {
+    window.api.mockAnswer(q);                 // my spoken answer -> AI interviewer
+  } else {
+    currentQuestion = q;
+    startAnswer();
+    window.api.smartAnswer({ question: q, transcript: transcriptForLLM() });
+  }
+}
+
+window.api.onToken(t => { answerRaw += t; renderAnswer(answerRaw); });
+window.api.onAnswerDone(async () => {
+  answering = false;
+  if (!answerRaw || !currentQuestion) return;
+  const warnings = await window.api.avoidWarnings({ question: currentQuestion, answer: answerRaw });
+  const score = await window.api.scoreAnswer({ question: currentQuestion, answer: answerRaw });
+  const parts = [];
+  if (warnings && warnings.length) {
+    parts.push('<b>Do not say:</b> ' + warnings.map(w => esc(w)).join('  -  '));
+  }
+  if (score) parts.push('<b>Score:</b> ' + esc(score).replace(/\n/g, '  -  '));
+  if (parts.length) {
+    fuEl.innerHTML = parts.join('<br>');
+    fuEl.style.display = 'block';
+  }
+});
+window.api.onAnswerError(m => { answering = false; aEl.textContent = 'Error: ' + m; });
+window.api.onAnswerNow(() => askClaude());
+window.api.onMode(() => { answering = true; startAnswer(); });  // coding/mock/report start
+window.api.onFollowups(qs => {
+  if (!qs || !qs.length) return;
+  fuEl.innerHTML = '<b>Likely next:</b> ' + qs.map(q => esc(q)).join('  ·  ');
+  fuEl.style.display = 'block';
+});
+window.api.onClickThrough(v => msg.textContent = v ? 'click-through ON' : 'click-through OFF');
+window.api.onCompact(v => document.body.classList.toggle('compact', v));
+
+// Length dial (Ctrl+Shift+L): cycle short -> medium -> deep, persist.
+const LENS = ['short', 'medium', 'deep'];
+window.api.onCycleLength(() => {
+  settings.length = LENS[(LENS.indexOf(settings.length) + 1) % LENS.length];
+  window.api.saveSettings({ length: settings.length });
+  msg.textContent = 'answer length: ' + settings.length;
+});
+$('gear').onclick = () => window.api.openSettings();
+$('copy').onclick = () => { window.api.copy(answerRaw); showToast('copied'); };
+$('story').onclick = async () => {
+  const q = (pending || interims.Interviewer || lastText('Interviewer') || qbox.value).trim();
+  if (!q || answering) return;
+  answering = true;
+  startAnswer();
+  try {
+    answerRaw = await window.api.matchStory(q);
+    renderAnswer(answerRaw);
+  } catch (e) {
+    aEl.textContent = 'Error: ' + e.message;
+  }
+  answering = false;
+};
+
+// Cost + latency readout in the footer.
+window.api.onStats(s => {
+  msg.textContent = `${(s.ttft/1000).toFixed(1)}s • $${s.cost.toFixed(3)}/session`;
+});
+
+// Toast helper + events.
+let toastT;
+function showToast(m){ const el = $('toast'); el.textContent = m; el.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', 1400); }
+window.api.onToast(showToast);
+
+// Manual question box (Ctrl+Shift+T).
+const qbox = $('qbox');
+window.api.onFocusQbox(() => { qbox.style.display = 'block'; qbox.focus(); });
+qbox.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && qbox.value.trim()) {
+    if (answering) return;
+    answering = true; startAnswer();
+    currentQuestion = qbox.value.trim();
+    window.api.smartAnswer({ question: currentQuestion, transcript: transcriptForLLM() });
+    qbox.value = ''; qbox.style.display = 'none';
+  } else if (e.key === 'Escape') { qbox.style.display = 'none'; }
+});
+
+// Cycle panel see-through level (how much of the app behind shows through).
+const bgLevels = [0.15, 0.38, 0.65, 0.9];
+let bgIdx = 1;
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'B' || e.key === 'b')) {
+    bgIdx = (bgIdx + 1) % bgLevels.length;
+    document.body.style.background = `rgba(16,16,20,${bgLevels[bgIdx]})`;
+    msg.textContent = `panel ${Math.round(bgLevels[bgIdx]*100)}% opaque`;
+  }
+});
+
+// Auto-dim while you talk: fade the panel so you don't read + speak at once.
+function monitorMic(stream){
+  const ctx = new AudioContext();
+  const an = ctx.createAnalyser(); an.fftSize = 512;
+  ctx.createMediaStreamSource(stream).connect(an);
+  const buf = new Uint8Array(an.frequencyBinCount);
+  let talking = false, lastLoud = 0;
+  (function tick(){
+    an.getByteTimeDomainData(buf);
+    let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v-128));
+    const now = performance.now();
+    if (peak > 14) lastLoud = now;
+    const speaking = (now - lastLoud) < 700;   // 700ms hangover
+    if (speaking && !talking) { talking = true; window.api.setOpacity(0.25); }
+    if (!speaking && talking) { talking = false; window.api.setOpacity(1); }
+    requestAnimationFrame(tick);
+  })();
+}
+
+// --- local Whisper (keyless, on-device, WASM) ---
+let whisperP = null;
+async function getWhisper(){
+  if (whisperP) return whisperP;
+  msg.textContent = 'loading Whisper model (first run downloads it)…';
+  const mod = await import('./node_modules/@huggingface/transformers/dist/transformers.web.min.js');
+  mod.env.allowRemoteModels = true;   // fetch model + wasm on first use, cached after
+  try { mod.env.backends.onnx.wasm.numThreads = 1; } catch {}  // file:// has no SharedArrayBuffer
+  whisperP = mod.pipeline('automatic-speech-recognition', settings.whisperModel || 'Xenova/whisper-tiny.en',
+    { device: 'wasm', dtype: { encoder_model: 'fp32', decoder_model_merged: 'fp32' } }); // fp32 on wasm = no quant ops
+  await whisperP;
+  msg.textContent = 'Whisper ready (keyless)';
+  return whisperP;
+}
+
+const wq = [];              // clip queue, processed sequentially
+let wRunning = false;
+async function wPump(asr){
+  if (wRunning || !wq.length) return;
+  wRunning = true;
+  const { clip, who, drives } = wq.shift();
+  try {
+    const out = await asr(clip, { chunk_length_s: 30 });
+    const text = (out.text || '').trim();
+    // drop common silence hallucinations
+    if (text && !/^(you|thank you\.?|thanks\.?|\.)$/i.test(text)) {
+      if (!utteranceStarted[who]) utteranceStarted[who] = performance.now() - Math.max(2500, (text.match(/\S+/g) || []).length * 420);
+      pushFinal(who, text);
+      if (drives) pending = (pending + ' ' + text).trim();
+      renderTranscript();
+      if (drives) fire();
+    }
+  } catch (e) { msg.textContent = 'Whisper: ' + e.message; }
+  wRunning = false;
+  wPump(asr);
+}
+
+async function startWhisper(stream, who, drives){
+  const asr = await getWhisper();
+  const ac = new AudioContext({ sampleRate: 16000 });
+  const src = ac.createMediaStreamSource(stream);
+  const proc = ac.createScriptProcessor(4096, 1, 1);
+  const sink = ac.createGain(); sink.gain.value = 0;   // silent sink so processor runs
+  let buf = [], speaking = false, lastVoice = 0;
+  proc.onaudioprocess = (e) => {
+    const d = e.inputBuffer.getChannelData(0);
+    let sum = 0; for (let i = 0; i < d.length; i++) sum += d[i] * d[i];
+    const rms = Math.sqrt(sum / d.length);
+    const now = performance.now();
+    if (rms > 0.01) { lastVoice = now; speaking = true; }
+    if (speaking) buf.push(new Float32Array(d));
+    const samples = buf.reduce((a, b) => a + b.length, 0);
+    const silent = (now - lastVoice) > 700;
+    if ((speaking && silent && samples > ac.sampleRate * 0.6) || samples > ac.sampleRate * 15) {
+      const clip = new Float32Array(samples);
+      let o = 0; for (const c of buf) { clip.set(c, o); o += c.length; }
+      buf = []; speaking = false;
+      wq.push({ clip, who, drives }); wPump(asr);
+    }
+  };
+  src.connect(proc); proc.connect(sink); sink.connect(ac.destination);
+  $('livedot').classList.add('on');
+}
+
+// --- sherpa-onnx streaming (keyless, on-device, real interim words) ---
+// Captures 16kHz PCM and streams it to main, which runs the recognizer.
+function startSherpa(stream, who, drives){
+  const ac = new AudioContext({ sampleRate: 16000 });
+  const src = ac.createMediaStreamSource(stream);
+  const proc = ac.createScriptProcessor(4096, 1, 1);
+  const sink = ac.createGain(); sink.gain.value = 0;
+  proc.onaudioprocess = (e) => {
+    const d = e.inputBuffer.getChannelData(0);
+    window.api.sherpaPcm({ who, samples: new Float32Array(d), drives });
+  };
+  src.connect(proc); proc.connect(sink); sink.connect(ac.destination);
+  $('livedot').classList.add('on'); msg.textContent = 'transcribing (on-device)';
+}
+window.api.onSherpaResult(({ who, text, ended, drives }) => {
+  if (ended) {
+    if (text) pushFinal(who, text);
+    if (drives && text) { pending = text; renderTranscript(); fire(); return; }
+  } else {
+    if (text && !utteranceStarted[who]) utteranceStarted[who] = performance.now();
+    interims[who] = text;
+  }
+  renderTranscript();
+});
+
+async function startDeepgram(stream, who, drives){
+  const key = await window.api.getDeepgramKey();
+  if (!key) { msg.textContent = 'No DEEPGRAM_API_KEY in .env'; return; }
+
+  const url = 'wss://api.deepgram.com/v1/listen'
+    + '?model=nova-2&smart_format=true&interim_results=true'
+    + '&punctuate=true&endpointing=300&language=' + encodeURIComponent(settings.sttLang || 'en-US');
+  const ws = new WebSocket(url, ['token', key]);
+
+  ws.onopen = () => {
+    $('livedot').classList.add('on'); msg.textContent = 'transcribing';
+    const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    rec.ondataavailable = e => { if (e.data.size && ws.readyState === 1) ws.send(e.data); };
+    rec.start(250);
+  };
+  ws.onerror = () => msg.textContent = 'Deepgram error (' + who + ')';
+  ws.onmessage = (m) => {
+    const d = JSON.parse(m.data);
+    const alt = d.channel && d.channel.alternatives && d.channel.alternatives[0];
+    if (!alt) return;
+    const text = alt.transcript;
+    if (!text) return;
+    if (d.is_final) { pushFinal(who, text); if (drives) pending = (pending + ' ' + text).trim(); }
+    else { if (!utteranceStarted[who]) utteranceStarted[who] = performance.now(); interims[who] = text; }
+    renderTranscript();
+    if (d.speech_final && drives) fire();   // driving speaker finished -> answer
+  };
+}
+
+async function startCapture(m){
+  mode = m;
+  $('go').disabled = true; $('mock').disabled = true;
+  settings = { ...settings, ...(await window.api.getSettings()) };  // pick up latest settings
+  if (settings.localOnly && settings.stt === 'deepgram') {
+    settings.stt = 'sherpa';
+    window.api.saveSettings({ stt: 'sherpa' });
+  }
+  const startSTT = { deepgram: startDeepgram, whisper: startWhisper, sherpa: startSherpa }[settings.stt] || startDeepgram;
+  try {
+    if (m === 'live') {
+      recState.textContent = 'system + mic';
+      const sys = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      sys.getVideoTracks().forEach(t => t.stop());
+      level(sys, 'i-f');
+      startSTT(sys, 'Interviewer', true);        // interviewer drives auto-answers
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      level(mic, 'm-f');
+      monitorMic(mic);                           // auto-dim while I talk
+      startSTT(mic, 'You', false);               // label my speech, don't auto-answer
+      if (settings.company) { showToast('researching ' + settings.company + '…'); window.api.research().then(() => showToast('research ready')); }
+    } else {                                     // mock: transcribe ME, AI is interviewer
+      recState.textContent = 'mic';
+      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      level(mic, 'm-f');
+      startSTT(mic, 'You', true);
+      $('report').style.display = 'inline-block';
+      window.api.mockStart();            // AI asks the first question
+    }
+  } catch (e) { recState.textContent = 'idle'; msg.textContent = 'Error: ' + e.message; }
+}
+
+$('go').onclick = () => startCapture('live');
+$('mock').onclick = () => startCapture('mock');
+$('report').onclick = () => window.api.mockReport();
+
+// Load settings (stt language, answer length) on startup.
+if ($('setup-stt')) $('setup-stt').onchange = () => {
+  settings.stt = $('setup-stt').value;
+  window.api.saveSettings({ stt: settings.stt });
+  refreshSetup();
+};
+if ($('setup-mic')) $('setup-mic').onclick = async () => {
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    $('calibration').textContent = 'Calibrating mic... speak normally.';
+    const result = await calibrateStream(mic, 'Mic');
+    mic.getTracks().forEach(t => t.stop());
+    $('calibration').textContent = result;
+    msg.textContent = 'mic calibrated';
+  } catch (e) { msg.textContent = 'mic: ' + e.message; }
+};
+if ($('setup-screen')) $('setup-screen').onclick = async () => {
+  try {
+    const sys = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+    $('calibration').textContent = 'Calibrating system audio... play interviewer audio.';
+    const result = await calibrateStream(sys, 'System audio');
+    sys.getTracks().forEach(t => t.stop());
+    $('calibration').textContent = result;
+    msg.textContent = 'system audio calibrated';
+  } catch (e) { msg.textContent = 'system audio: ' + e.message; }
+};
+if ($('setup-done')) $('setup-done').onclick = () => {
+  settings.onboardingComplete = true;
+  window.api.completeOnboarding();
+  $('setup').style.display = 'none';
+  startCapture('mock');
+};
+window.api.getSettings().then(s => { if (s) settings = { ...settings, ...s }; refreshSetup(); });
+
+
+</script>
+</body>
+</html>

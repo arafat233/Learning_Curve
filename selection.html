@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html,body{margin:0;height:100%;cursor:crosshair;overflow:hidden;
+    background:rgba(0,0,0,.25);-webkit-user-select:none;user-select:none}
+  #box{position:fixed;border:2px solid #3b82f6;background:rgba(59,130,246,.15);display:none}
+  #hint{position:fixed;top:12px;left:50%;transform:translateX(-50%);
+    font:13px system-ui;color:#fff;background:rgba(0,0,0,.6);padding:6px 12px;border-radius:6px}
+</style>
+</head>
+<body>
+  <div id="hint">Drag a box around the coding problem · Esc to cancel</div>
+  <div id="box"></div>
+<script>
+  const box = document.getElementById('box');
+  let sx = 0, sy = 0, drag = false;
+  addEventListener('mousedown', e => { drag = true; sx = e.clientX; sy = e.clientY;
+    box.style.display = 'block'; box.style.left = sx + 'px'; box.style.top = sy + 'px';
+    box.style.width = '0px'; box.style.height = '0px'; });
+  addEventListener('mousemove', e => {
+    if (!drag) return;
+    const x = Math.min(sx, e.clientX), y = Math.min(sy, e.clientY);
+    box.style.left = x + 'px'; box.style.top = y + 'px';
+    box.style.width = Math.abs(e.clientX - sx) + 'px';
+    box.style.height = Math.abs(e.clientY - sy) + 'px';
+  });
+  addEventListener('mouseup', e => {
+    drag = false;
+    const rect = { x: Math.min(sx, e.clientX), y: Math.min(sy, e.clientY),
+      w: Math.abs(e.clientX - sx), h: Math.abs(e.clientY - sy) };
+    window.api.regionSelected(rect);
+  });
+  addEventListener('keydown', e => { if (e.key === 'Escape') window.api.regionCancel(); });
+</script>
+</body>
+</html>

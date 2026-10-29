@@ -1,0 +1,10 @@
+.env
+.window.json
+context.txt
+node_modules/
+session-export.txt
+session.log
+settings.json
+pinned.txt
+models/
+dist/

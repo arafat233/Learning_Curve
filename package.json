@@ -1,0 +1,41 @@
+{
+  "name": "ai-interview",
+  "version": "0.1.0",
+  "description": "Real-time interview copilot",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node scripts/smoke.js",
+    "runtime-smoke": "node scripts/runtime-smoke.js",
+    "dist": "electron-packager . \"AI Interview\" --platform=win32 --arch=x64 --out=dist --overwrite --prune=true --no-asar --ignore=\"(settings\\.json|profiles\\.json|context\\.txt|session\\.log|session-export\\.txt|pinned\\.txt|prep-pack\\.txt|post-report\\.txt|telemetry-errors\\.log|\\.env|^/dist)\""
+  },
+  "build": {
+    "appId": "com.najeeb.aiinterview",
+    "productName": "AI Interview",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "settings.html",
+      "selection.html"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "@huggingface/transformers": "^4.2.0",
+    "sherpa-onnx-node": "^1.13.6",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0",
+    "sharp": "0.35.4"
+  }
+}
