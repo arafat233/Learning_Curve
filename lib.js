@@ -166,4 +166,14 @@ function pickReviewQuestion(turns, recent = []) {
   return due[0] ? { question: due[0].q, score: Math.round(avg(due[0].score) * 10) / 10 } : null;
 }
 
-module.exports = { pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };
+// Backup bundle: plain JSON of the user's data files. Import only accepts names from `allowed` (no path tricks).
+const BACKUP_FILES = ['session.log', 'sessions.json', 'pinned.txt', 'context.txt', 'profiles.json', 'prep-pack.txt', 'post-report.txt',
+  'answer-replay.txt', 'answer-templates.json', 'session-notes.json', 'speech-metrics.json', 'question-library-custom.json', 'company-question-pack.txt'];
+const makeBackup = (files) => JSON.stringify({ app: 'ai-interview-backup', version: 1, files }, null, 2);
+function parseBackup(text, allowed = BACKUP_FILES) {
+  const b = JSON.parse(text);
+  if (b?.app !== 'ai-interview-backup' || typeof b.files !== 'object') throw new Error('Not an AI Interview backup file.');
+  return Object.fromEntries(Object.entries(b.files).filter(([k, v]) => allowed.includes(k) && typeof v === 'string'));
+}
+
+module.exports = { BACKUP_FILES, makeBackup, parseBackup, pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };

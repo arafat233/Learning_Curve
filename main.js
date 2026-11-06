@@ -1,9 +1,9 @@
-const { app, BrowserWindow, globalShortcut, session, ipcMain, desktopCapturer, screen, shell, clipboard } = require('electron');
+const { app, BrowserWindow, globalShortcut, session, ipcMain, dialog, desktopCapturer, screen, shell, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { spawn, spawnSync } = require('child_process');
-const { pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
+const { BACKUP_FILES, makeBackup, parseBackup, pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
 
 // --- tiny .env loader (no dependency) ---
 // Looks next to the source AND next to the packaged .exe, so a built app can
@@ -702,6 +702,25 @@ ipcMain.handle('get-timeline', () => timelineData());
 ipcMain.handle('get-trends', () => trendsData());
 ipcMain.handle('save-session-note', (_evt, payload) => saveSessionNote(payload?.sessionId, payload || {}));
 ipcMain.handle('log-speech-metric', (_evt, payload) => appendSpeechMetric(payload || {}));
+
+// Backup is plain JSON (profiles and context are decrypted), so keep the file somewhere private.
+ipcMain.handle('backup-export', async () => {
+  const r = await dialog.showSaveDialog(settingsWin || win, { defaultPath: 'ai-interview-backup.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (r.canceled || !r.filePath) return 'Cancelled.';
+  const files = {};
+  for (const n of BACKUP_FILES) { const t = readTextFile(n, ''); if (t) files[n] = t; }
+  fs.writeFileSync(r.filePath, makeBackup(files));
+  return `Saved ${Object.keys(files).length} files to ${r.filePath}. The file is NOT encrypted - keep it private.`;
+});
+ipcMain.handle('backup-import', async () => {
+  const r = await dialog.showOpenDialog(settingsWin || win, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+  if (r.canceled || !r.filePaths[0]) return 'Cancelled.';
+  try {
+    const files = parseBackup(fs.readFileSync(r.filePaths[0], 'utf8'));
+    for (const [n, t] of Object.entries(files)) writeTextFile(n, t);
+    return `Restored ${Object.keys(files).length} files. Restart the app to reload them.`;
+  } catch (e) { return 'Import failed: ' + e.message; }
+});
 
 ipcMain.handle('delete-user-data', () => {
   for (const name of ['session.log', 'sessions.json', 'active-session.json', 'session-export.txt', 'session-export.md', 'session-export.html', 'session-export.pdf', 'pinned.txt', 'context.txt', 'profiles.json', 'prep-pack.txt', 'post-report.txt', 'answer-replay.txt', 'answer-templates.json', 'session-notes.json', 'speech-metrics.json', 'question-library-custom.json', 'company-question-pack.txt', 'telemetry-errors.log', 'window.json']) {

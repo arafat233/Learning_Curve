@@ -144,3 +144,13 @@ console.log('cost cap checks passed');
   assert.strictEqual(lib.pickReviewQuestion(turns, ['C', 'B']), null, 'nothing due');
   console.log('review pick checks passed');
 }
+
+// backup bundle
+{
+  const text = lib.makeBackup({ 'profiles.json': '{"a":1}', 'context.txt': 'hi' });
+  assert.deepStrictEqual(lib.parseBackup(text), { 'profiles.json': '{"a":1}', 'context.txt': 'hi' });
+  const evil = JSON.stringify({ app: 'ai-interview-backup', files: { '../evil.js': 'x', 'main.js': 'x', 'pinned.txt': 'ok', 'context.txt': 5 } });
+  assert.deepStrictEqual(lib.parseBackup(evil), { 'pinned.txt': 'ok' }, 'only known text files are restored');
+  assert.throws(() => lib.parseBackup('{"x":1}'), /Not an AI Interview backup/);
+  console.log('backup checks passed');
+}

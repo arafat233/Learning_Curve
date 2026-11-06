@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   completeOnboarding: () => ipcRenderer.send('complete-onboarding'),
   exportSession: () => ipcRenderer.invoke('export-session'),
   deleteUserData: () => ipcRenderer.invoke('delete-user-data'),
+  backupExport: () => ipcRenderer.invoke('backup-export'),
+  backupImport: () => ipcRenderer.invoke('backup-import'),
   generatePrepPack: () => ipcRenderer.invoke('generate-prep-pack'),
   generatePostReport: () => ipcRenderer.invoke('generate-post-report'),
   scoreAnswer: (payload) => ipcRenderer.invoke('score-answer', payload),

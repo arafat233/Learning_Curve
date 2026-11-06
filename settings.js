@@ -434,6 +434,8 @@ ${kinds || '- No turns yet.'}`;
     $('productOut').textContent = await window.api.generatePostReport();
     await loadDashboard();
   };
+  $('backupExport').onclick = async () => { $('productOut').textContent = await window.api.backupExport(); };
+  $('backupImport').onclick = async () => { $('productOut').textContent = await window.api.backupImport(); await loadDashboard(); };
   $('deleteData').onclick = async () => {
     if (!confirm('Delete local profiles, session history, pinned answers, reports, and saved context?')) return;
     await window.api.deleteUserData();
