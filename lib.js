@@ -88,4 +88,37 @@ function markdownToHtml(md) {
 }
 
 
-module.exports = { compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };
+function localClassifyQuestion(question) {
+  const q = String(question || '').toLowerCase();
+  const rules = [
+    ['coding', /\b(code|algorithm|leetcode|array|string|tree|graph|complexity|function|bug|debug|implement)\b/],
+    ['system-design', /\b(design|scale|architecture|distributed|database|cache|queue|load balancer|throughput)\b/],
+    ['behavioral', /\b(tell me about a time|conflict|failure|challenge|leadership|disagree|mistake|proud|difficult)\b/],
+    ['recruiter', /\b(salary|compensation|notice period|visa|location|availability|why this company|why do you want)\b/],
+    ['project', /\b(project|built|worked on|ownership|impact|users|launched)\b/],
+    ['resume', /\b(resume|background|experience|walk me through|career)\b/],
+  ];
+  const found = rules.find(([, re]) => re.test(q));
+  return {
+    type: found?.[0] || 'general',
+    confidence: found ? 0.75 : 0.45,
+    reason: found ? 'Matched local keyword pattern.' : 'No strong local pattern matched.',
+  };
+}
+
+function localScoreDetails(question, answer) {
+  const a = String(answer || '');
+  const wordCount = (a.match(/\S+/g) || []).length;
+  const hasBullets = /^\s*[-*]/m.test(a);
+  const hasMetric = /\b\d+%|\b\d+x|\b\d+\s*(users|requests|customers|ms|seconds|minutes|hours|days|revenue|cost)\b/i.test(a);
+  const hasHedge = /\bprobably|maybe|sort of|kind of|i guess|i think\b/i.test(a);
+  const qType = localClassifyQuestion(question).type;
+  const clarity = Math.max(4, Math.min(10, 9 - (wordCount > 220 ? 2 : 0) + (hasBullets ? 1 : 0)));
+  const structure = Math.max(4, Math.min(10, (hasBullets ? 8 : 6) + (/\b(first|second|finally|situation|task|action|result)\b/i.test(a) ? 1 : 0)));
+  const specificity = Math.max(3, Math.min(10, hasMetric ? 8 : 5));
+  const confidence = Math.max(3, Math.min(10, hasHedge ? 5 : 8));
+  const technicalDepth = Math.max(4, Math.min(10, /\b(api|database|cache|latency|scale|complexity|tradeoff|test|failure|edge)\b/i.test(a) ? 8 : (qType === 'coding' || qType === 'system-design' ? 5 : 6)));
+  return { clarity, structure, specificity, confidence, technicalDepth, wordCount, hasMetric, hasHedge, qType };
+}
+
+module.exports = { localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };

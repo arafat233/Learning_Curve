@@ -452,7 +452,7 @@ window.api.onSherpaResult(({ who, text, ended, drives }) => {
   renderTranscript();
 });
 
-async function startDeepgram(stream, who, drives){
+async function startDeepgram(stream, who, drives, attempt = 0){
   const { key, scheme } = await window.api.getDeepgramKey();
   if (!key) { msg.textContent = 'No DEEPGRAM_API_KEY in .env'; return; }
 
@@ -460,14 +460,28 @@ async function startDeepgram(stream, who, drives){
     + '?model=nova-2&smart_format=true&interim_results=true'
     + '&punctuate=true&endpointing=300&language=' + encodeURIComponent(settings.sttLang || 'en-US');
   const ws = new WebSocket(url, [scheme, key]);
+  let rec;
 
   ws.onopen = () => {
+    attempt = 0;
     $('livedot').classList.add('on'); msg.textContent = 'transcribing';
-    const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
     rec.ondataavailable = e => { if (e.data.size && ws.readyState === 1) ws.send(e.data); };
     rec.start(250);
   };
   ws.onerror = () => msg.textContent = 'Deepgram error (' + who + ')';
+  // Dropped connection: retry with a fresh token (they expire), then fall back to the local model.
+  ws.onclose = () => {
+    try { rec && rec.state !== 'inactive' && rec.stop(); } catch {}
+    if (!stream.active) return;                       // capture ended on purpose
+    if (attempt >= 3) {
+      msg.textContent = 'Deepgram unavailable, switching to local speech';
+      startSherpa(stream, who, drives);
+      return;
+    }
+    msg.textContent = 'reconnecting (' + who + ')';
+    setTimeout(() => startDeepgram(stream, who, drives, attempt + 1), 500 * 2 ** attempt);
+  };
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     const alt = d.channel && d.channel.alternatives && d.channel.alternatives[0];

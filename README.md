@@ -37,3 +37,7 @@ User data (settings, profiles, session logs) lives in Electron's `userData` fold
 
 ## Updates
 Host a JSON file shaped like `docs/update-feed.sample.json` (e.g. as a raw GitHub file or release asset) and paste its URL into Settings → update feed URL. "Check for updates" compares `version` to the app version and links to `downloadUrl`.
+
+## Settings worth knowing
+- `maxSessionCost` (settings.json, USD): stops cloud answers once the session spend reaches it. `0` or unset = no cap.
+- `context.txt` and `profiles.json` are encrypted with the OS keystore; older plaintext copies are still read and re-encrypted on next save.

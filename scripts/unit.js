@@ -39,3 +39,13 @@ console.log('lib checks passed');
   global.fetch = realFetch;
   console.log('backend checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// scoring + classification (moved to lib.js so they can be tested)
+assert.strictEqual(lib.localClassifyQuestion('Tell me about a time you had a conflict').type, 'behavioral');
+assert.strictEqual(lib.localClassifyQuestion('Design a rate limiter that can scale').type, 'system-design');
+assert.strictEqual(lib.localClassifyQuestion('hello there').type, 'general');
+const good = lib.localScoreDetails('Tell me about a project', '- First, I cut latency 40%\n- Result: 3x throughput for 2000 users');
+const weak = lib.localScoreDetails('Tell me about a project', 'I guess maybe it was sort of fine');
+assert(good.hasMetric && !weak.hasMetric && weak.hasHedge);
+assert(good.specificity > weak.specificity && good.confidence > weak.confidence);
+console.log('scoring checks passed');

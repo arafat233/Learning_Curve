@@ -9,11 +9,14 @@
     "runtime-smoke": "node scripts/runtime-smoke.js",
     "dist": "electron-packager . \"AI Interview\" --platform=win32 --arch=x64 --out=dist --overwrite --prune=true --no-asar --ignore=\"(settings\\.json|profiles\\.json|context\\.txt|session\\.log|session-export\\.txt|pinned\\.txt|prep-pack\\.txt|post-report\\.txt|telemetry-errors\\.log|\\.env|^/dist)\"",
     "test": "node scripts/unit.js",
-    "model": "node scripts/get-model.js"
+    "model": "node scripts/get-model.js",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",
-    "electron": "^44.0.0"
+    "electron": "^44.0.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
@@ -24,5 +27,6 @@
   "overrides": {
     "adm-zip": "0.6.0",
     "sharp": "0.35.4"
-  }
+  },
+  "license": "MIT"
 }
