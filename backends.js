@@ -27,12 +27,15 @@ function cliPrompt(system, messages) {
   return (system ? 'Instructions:' + NL + system + DBL : '') + turns;
 }
 // The CLI must use the claude.ai login; an ANTHROPIC_API_KEY in our env would override it (and break if it is a placeholder).
+// Text-only one-shots need no tools, MCP servers, skills or user hooks; skipping them roughly halves CLI startup (~9s -> ~5s).
+const CLI_LEAN_FLAGS = ['--strict-mcp-config', '--tools', '""', '--disable-slash-commands', '--setting-sources', '""'];
+const FAST_MODEL = 'claude-haiku-4-5', FAST_MAX_TOKENS = 300;
 const cliEnv = () => { const e = { ...process.env }; delete e.ANTHROPIC_API_KEY; return e; };
 // One-shot `claude -p`; the prompt goes over stdin so nothing needs shell quoting.
 function cliRun(prompt, model, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     if (!/^[\w.\[\]-]+$/.test(String(model))) return reject(new Error('Invalid model name for CLI.'));
-    const child = require('child_process').spawn('claude', ['-p', '--model', model], { cwd: require('os').tmpdir(), shell: true, env: cliEnv() });
+    const child = require('child_process').spawn('claude', ['-p', '--model', model, ...CLI_LEAN_FLAGS], { cwd: require('os').tmpdir(), shell: true, env: cliEnv() });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error('Claude CLI timed out.')); }, timeoutMs);
     child.stdout.on('data', d => { out += d; });
@@ -45,7 +48,8 @@ function cliRun(prompt, model, timeoutMs = 120000) {
 // While backend === 'cli', route messages.create/stream through the CLI; otherwise leave them alone.
 function useCliWhenSelected(m, getSettings, run = cliRun) {
   const create = m.create.bind(m), stream = m.stream.bind(m);
-  const ask = async (a) => run(cliPrompt(a.system, a.messages), a.model);
+  // Short helper calls (classify, follow-ups, risk flags) don't need the big model; Haiku answers them much faster.
+  const ask = async (a) => run(cliPrompt(a.system, a.messages), a.max_tokens <= FAST_MAX_TOKENS ? FAST_MODEL : a.model);
   const msg = (t) => ({ content: [{ type: 'text', text: t }], usage: {} });
   m.create = (...a) => getSettings().backend === 'cli' ? ask(a[0]).then(msg) : create(...a);
   m.stream = (...a) => {
