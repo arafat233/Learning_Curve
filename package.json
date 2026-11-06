@@ -19,7 +19,7 @@
     "globals": "^17.14.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
+    "@anthropic-ai/sdk": "^1.4.0",
     "@huggingface/transformers": "^4.2.0",
     "sherpa-onnx-node": "^1.13.6",
     "typescript": "^5.9.3"
