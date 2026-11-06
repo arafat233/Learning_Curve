@@ -72,6 +72,7 @@
       <i class="dot" id="livedot" title="transcription active"></i>
       <button id="go">Live</button>
       <button id="mock">Mock</button>
+      <button id="voice" title="read mock interviewer questions aloud (use headphones)">Voice off</button>
       <button id="story" title="match STAR story">Story</button>
       <button id="copy" title="copy answer (Ctrl+Shift+Y)">Copy</button>
       <button id="gear" title="settings">Settings</button>
@@ -248,9 +249,10 @@ function askClaude(){
 // Fired when the DRIVING speaker finishes a sentence.
 function fire(){
   const q = pending.trim(); pending = '';
-  if (!q || answering) return;
+  if (!q || answering || ttsBusy) return;
   answering = true;
   if (mode === 'mock') {
+    clearInterval(answerTimer); msg.textContent = 'transcribing';
     window.api.mockAnswer(q);                 // my spoken answer -> AI interviewer
   } else {
     currentQuestion = q;
@@ -260,8 +262,34 @@ function fire(){
 }
 
 window.api.onToken(t => { answerRaw += t; renderAnswer(answerRaw); });
+// Mock mode: optionally read the interviewer's question aloud, then run a 90s answer timer.
+// Mic input is ignored while speaking (and briefly after) so the app doesn't transcribe its own voice.
+let ttsBusy = false, answerTimer = null;
+function startAnswerTimer() {
+  clearInterval(answerTimer);
+  const end = Date.now() + 90000;
+  answerTimer = setInterval(() => {
+    const s = Math.ceil((end - Date.now()) / 1000);
+    msg.textContent = s > 0 ? 'answer timer ' + s + 's' : 'time - wrap up';
+    if (s <= -30) clearInterval(answerTimer);
+  }, 500);
+}
+function speakThenTimer(text) {
+  if (!settings.mockVoice || !text || !window.speechSynthesis) return startAnswerTimer();
+  const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ''));
+  ttsBusy = true; pending = '';
+  u.onend = u.onerror = () => setTimeout(() => { ttsBusy = false; pending = ''; startAnswerTimer(); }, 800);
+  speechSynthesis.speak(u);
+}
+$('voice').onclick = () => {
+  settings.mockVoice = !settings.mockVoice;
+  $('voice').textContent = settings.mockVoice ? 'Voice on' : 'Voice off';
+  if (!settings.mockVoice) speechSynthesis.cancel();
+  window.api.saveSettings({ mockVoice: settings.mockVoice });
+};
 window.api.onAnswerDone(async () => {
   answering = false;
+  if (mode === 'mock') speakThenTimer(answerRaw);
   if (!answerRaw || !currentQuestion) return;
   const warnings = await window.api.avoidWarnings({ question: currentQuestion, answer: answerRaw });
   const score = await window.api.scoreAnswer({ question: currentQuestion, answer: answerRaw });
@@ -442,6 +470,7 @@ function startSherpa(stream, who, drives){
   $('livedot').classList.add('on'); msg.textContent = 'transcribing (on-device)';
 }
 window.api.onSherpaResult(({ who, text, ended, drives }) => {
+  if (ttsBusy) return;
   if (ended) {
     if (text) pushFinal(who, text);
     if (drives && text) { pending = text; renderTranscript(); fire(); return; }
@@ -483,6 +512,7 @@ async function startDeepgram(stream, who, drives, attempt = 0){
     setTimeout(() => startDeepgram(stream, who, drives, attempt + 1), 500 * 2 ** attempt);
   };
   ws.onmessage = (m) => {
+    if (ttsBusy) return;
     const d = JSON.parse(m.data);
     const alt = d.channel && d.channel.alternatives && d.channel.alternatives[0];
     if (!alt) return;
@@ -563,7 +593,7 @@ if ($('setup-done')) $('setup-done').onclick = () => {
   $('setup').style.display = 'none';
   startCapture('mock');
 };
-window.api.getSettings().then(s => { if (s) settings = { ...settings, ...s }; refreshSetup(); });
+window.api.getSettings().then(s => { if (s) settings = { ...settings, ...s }; $('voice').textContent = settings.mockVoice ? 'Voice on' : 'Voice off'; refreshSetup(); });
 
 
 </script>

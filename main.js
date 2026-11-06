@@ -151,6 +151,7 @@ let settings = {
   telemetryEndpoint: '',
   updateFeedUrl: '',
   compactDefault: false,
+  mockVoice: false,           // read mock interviewer questions aloud
   opacity: 1,
   shortcuts: {
     answer: 'CommandOrControl+Shift+A',
