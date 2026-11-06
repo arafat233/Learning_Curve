@@ -349,6 +349,8 @@
     <div>
       <label>Default opacity</label>
       <input id="opacity" type="number" min="0.15" max="1" step="0.05">
+      <label>Session cost cap (USD, 0 = no cap)</label>
+      <input id="maxSessionCost" type="number" min="0" step="0.5">
     </div>
   </div>
 
@@ -801,6 +803,7 @@ ${kinds || '- No turns yet.'}`;
     $('updateFeedUrl').value = s.updateFeedUrl || '';
     $('compactDefault').checked = !!s.compactDefault;
     $('opacity').value = s.opacity || 1;
+    $('maxSessionCost').value = s.maxSessionCost || 0;
     $('shortcutAnswer').value = s.shortcuts?.answer || 'CommandOrControl+Shift+A';
     $('shortcutType').value = s.shortcuts?.typeQuestion || 'CommandOrControl+Shift+T';
     $('shortcutSolve').value = s.shortcuts?.solve || 'CommandOrControl+Shift+S';
@@ -867,6 +870,7 @@ ${kinds || '- No turns yet.'}`;
       updateFeedUrl: $('updateFeedUrl').value.trim(),
       compactDefault: $('compactDefault').checked,
       opacity: Number($('opacity').value) || 1,
+      maxSessionCost: Math.max(0, Number($('maxSessionCost').value) || 0),
       shortcuts: {
         answer: $('shortcutAnswer').value.trim() || 'CommandOrControl+Shift+A',
         typeQuestion: $('shortcutType').value.trim() || 'CommandOrControl+Shift+T',
