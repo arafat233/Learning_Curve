@@ -1,0 +1,35 @@
+  body{margin:0;font:14px system-ui;background:#15151a;color:#e8e8ea;padding:18px}
+  h2{margin:0 0 14px;font-size:16px}
+  label{display:block;margin:12px 0 4px;font-size:12px;opacity:.75}
+  select,input,textarea{width:100%;box-sizing:border-box;background:#22222b;color:#e8e8ea;
+    border:1px solid #3a3a44;border-radius:6px;padding:8px;font:13px system-ui}
+  textarea{height:180px;resize:vertical;line-height:1.4}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .card{border:1px solid #30313a;background:#1b1b22;border-radius:8px;padding:12px;margin-top:14px}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .metric{background:#22222b;border:1px solid #33343d;border-radius:6px;padding:8px;font-size:12px}
+  .metric b{display:block;font-size:18px;margin-top:3px}
+  .story{border:1px solid #33343d;background:#20212a;border-radius:6px;padding:10px;margin-top:8px}
+  .story textarea{height:60px;margin-top:6px}
+  .tabs{display:flex;gap:6px;position:sticky;top:0;background:#15151a;padding:0 0 12px;z-index:2}
+  .tab{background:#22222b;border:1px solid #343541;color:#e8e8ea;border-radius:6px;padding:7px 10px}
+  .tab.on{background:#3b82f6;border-color:#3b82f6}
+  .section{display:none}
+  .section.on{display:block}
+  pre{white-space:pre-wrap;max-height:260px;overflow:auto;background:#101015;border:1px solid #30313a;border-radius:6px;padding:10px;font:12px ui-monospace,Consolas,monospace}
+  button{margin-top:16px;background:#3b82f6;color:#fff;border:0;border-radius:6px;
+    padding:9px 14px;cursor:pointer;font-size:13px}
+  button.sec{background:#2a2a33;border:1px solid #3a3a44}
+  .bar{display:flex;gap:10px}
+  .conflict{border-color:#f87171!important;box-shadow:0 0 0 1px rgba(248,113,113,.35)}
+  .viz{display:none;background:#101015;border:1px solid #30313a;border-radius:6px;padding:10px;margin-top:10px}
+  .viz.on{display:block}
+  .chart-row{display:grid;grid-template-columns:120px 1fr 44px;gap:8px;align-items:center;margin:7px 0;font-size:12px}
+  .chart-bar{height:9px;background:#22222b;border-radius:5px;overflow:hidden}
+  .chart-fill{height:100%;background:#3b82f6}
+  .timeline-item{font-size:12px;line-height:1.45}
+  .timeline-item b{display:block;margin-bottom:6px}
+  .code-tabs button{margin-top:8px;padding:6px 9px}
+  .code-tabs button.on{background:#3b82f6;border-color:#3b82f6}
+  small{opacity:.55}
+  #saved{color:#4ade80;margin-left:10px;font-size:12px;opacity:0;transition:opacity .2s}
