@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { spawn, spawnSync } = require('child_process');
-const { enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
+const { buildSessionMarkdown, enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
 
 // --- tiny .env loader (no dependency) ---
 // Looks next to the source AND next to the packaged .exe, so a built app can
@@ -1591,25 +1591,10 @@ ipcMain.handle('export-session', async () => {
   } catch (e) { return 'No session yet: ' + e.message; }
 });
 
-function sessionMarkdown() {
-  const turns = readSessionTurns();
-  const profile = activeProfile();
-  return [
-    '# AI Interview Session',
-    '',
-    `Generated: ${new Date().toISOString()}`,
-    profile ? `Profile: ${profile.name || 'Untitled profile'}` : '',
-    settings.company || settings.role ? `Target: ${settings.role || 'role'} at ${settings.company || 'company'}` : '',
-    '',
-    '## Turns',
-    '',
-    turns.map((o, i) => `### ${i + 1}. ${o.kind} - ${o.t}\n\n**Q:** ${o.q}\n\n**A:**\n\n${o.a}`).join('\n\n'),
-    '',
-    readTextFile('pinned.txt', '').trim() ? `## Pinned\n\n${readTextFile('pinned.txt', '').trim()}` : '',
-    readTextFile('prep-pack.txt', '').trim() ? `## Prep Pack\n\n${readTextFile('prep-pack.txt', '').trim()}` : '',
-    readTextFile('post-report.txt', '').trim() ? `## Post Report\n\n${readTextFile('post-report.txt', '').trim()}` : '',
-  ].filter(Boolean).join('\n');
-}
+const sessionMarkdown = () => buildSessionMarkdown({
+  turns: readSessionTurns(), profile: activeProfile(), settings,
+  pinned: readTextFile('pinned.txt', ''), prep: readTextFile('prep-pack.txt', ''), report: readTextFile('post-report.txt', ''),
+});
 
 ipcMain.handle('export-rich-session', async (_evt, format) => {
   const md = sessionMarkdown();

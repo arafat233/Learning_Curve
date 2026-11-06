@@ -138,4 +138,21 @@ function enforceCostCap(m, { isCapped, addCost, capError }) {
   };
 }
 
-module.exports = { enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };
+function buildSessionMarkdown({ turns, profile, settings, pinned, prep, report }) {
+  const sec = (title, text) => (String(text || '').trim() ? `## ${title}\n\n${String(text).trim()}` : '');
+  return [
+    '# AI Interview Session',
+    '',
+    `Generated: ${new Date().toISOString()}`,
+    profile ? `Profile: ${profile.name || 'Untitled profile'}` : '',
+    settings.company || settings.role ? `Target: ${settings.role || 'role'} at ${settings.company || 'company'}` : '',
+    '',
+    '## Turns',
+    '',
+    turns.map((o, i) => `### ${i + 1}. ${o.kind} - ${o.t}\n\n**Q:** ${o.q}\n\n**A:**\n\n${o.a}`).join('\n\n'),
+    '',
+    sec('Pinned', pinned), sec('Prep Pack', prep), sec('Post Report', report),
+  ].filter(Boolean).join('\n');
+}
+
+module.exports = { buildSessionMarkdown, enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };

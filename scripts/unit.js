@@ -99,3 +99,11 @@ console.log('cost cap checks passed');
   assert.throws(() => m.stream(), /capped/);
   console.log('cost cap wrapper checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// session export markdown
+{
+  const md = lib.buildSessionMarkdown({ turns: [{ kind: 'live', t: 'T', q: 'Why?', a: 'Because.' }], profile: { name: 'P' }, settings: { role: 'SWE' }, pinned: ' keep ', prep: '', report: '' });
+  assert(md.includes('### 1. live - T') && md.includes('**Q:** Why?') && md.includes('Profile: P'));
+  assert(md.includes('Target: SWE at company') && md.includes('## Pinned') && !md.includes('## Prep Pack'), 'empty sections omitted');
+  console.log('export checks passed');
+}
