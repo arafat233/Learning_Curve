@@ -353,7 +353,7 @@ function getCli() {
   cli = spawn('claude', [
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json',
     '--verbose', '--include-partial-messages', '--model', settings.model,
-  ], { cwd: __dirname, shell: true });
+  ], { cwd: __dirname, shell: true, env: require('./backends').cliEnv() });
   cli.stdout.on('data', (d) => {
     cliBuf += d.toString();
     let nl;

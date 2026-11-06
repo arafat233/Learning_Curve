@@ -26,11 +26,13 @@ function cliPrompt(system, messages) {
   const turns = messages.map(m => (messages.length > 1 ? (m.role === 'assistant' ? 'Assistant: ' : 'User: ') : '') + textOf(m.content)).join(DBL);
   return (system ? 'Instructions:' + NL + system + DBL : '') + turns;
 }
+// The CLI must use the claude.ai login; an ANTHROPIC_API_KEY in our env would override it (and break if it is a placeholder).
+const cliEnv = () => { const e = { ...process.env }; delete e.ANTHROPIC_API_KEY; return e; };
 // One-shot `claude -p`; the prompt goes over stdin so nothing needs shell quoting.
 function cliRun(prompt, model, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     if (!/^[\w.\[\]-]+$/.test(String(model))) return reject(new Error('Invalid model name for CLI.'));
-    const child = require('child_process').spawn('claude', ['-p', '--model', model], { cwd: require('os').tmpdir(), shell: true });
+    const child = require('child_process').spawn('claude', ['-p', '--model', model], { cwd: require('os').tmpdir(), shell: true, env: cliEnv() });
     let out = '', err = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error('Claude CLI timed out.')); }, timeoutMs);
     child.stdout.on('data', d => { out += d; });
@@ -93,3 +95,4 @@ module.exports = ({ getSettings, getAnthropic }) => {
 };
 module.exports.useCliWhenSelected = useCliWhenSelected;
 module.exports.cliPrompt = cliPrompt;
+module.exports.cliEnv = cliEnv;
