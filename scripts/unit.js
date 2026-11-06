@@ -49,3 +49,49 @@ const weak = lib.localScoreDetails('Tell me about a project', 'I guess maybe it 
 assert(good.hasMetric && !weak.hasMetric && weak.hasHedge);
 assert(good.specificity > weak.specificity && good.confidence > weak.confidence);
 console.log('scoring checks passed');
+
+// cost cap
+assert.strictEqual(lib.usageCost('claude-opus-5', { input_tokens: 1e6, output_tokens: 1e6 }), 30);
+assert.strictEqual(lib.usageCost('unknown-model', { input_tokens: 1e6 }), 5, 'unknown model uses top rate');
+assert(!lib.capReached(0, 99) && !lib.capReached(undefined, 99), 'no cap = never reached');
+assert(!lib.capReached(1, 0.99) && lib.capReached(1, 1) && lib.capReached('1', 2));
+console.log('cost cap checks passed');
+
+// storage.js with a fake electron: encrypt-at-rest round trip + plaintext legacy read
+{
+  const os = require('os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aii-'));
+  const fake = {
+    app: { getPath: () => dir, isReady: () => true },
+    safeStorage: { isEncryptionAvailable: () => true, encryptString: (s) => Buffer.from('X' + s), decryptString: (b) => b.toString().slice(1) },
+  };
+  const ep = require.resolve('electron');
+  require.cache[ep] = { id: ep, filename: ep, loaded: true, exports: fake };
+  const st = require('../storage');
+  st.writeJsonFile('profiles.json', { a: 1 });
+  assert(fs.readFileSync(path.join(dir, 'profiles.json'), 'utf8').startsWith('enc:'), 'profiles.json must be encrypted');
+  assert.deepStrictEqual(st.readJsonFile('profiles.json', null), { a: 1 });
+  st.writeTextFile('notes.txt', 'plain');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'notes.txt'), 'utf8'), 'plain', 'non-secret files stay plaintext');
+  fs.writeFileSync(path.join(dir, 'context.txt'), 'old plaintext');
+  assert.strictEqual(st.readTextFile('context.txt'), 'old plaintext', 'legacy plaintext still reads');
+  assert.strictEqual(st.readJsonFile('missing.json', 'fb'), 'fb');
+  fs.rmSync(dir, { recursive: true, force: true });
+  delete require.cache[ep];
+  console.log('storage checks passed');
+}
+
+// enforceCostCap: counts usage, then blocks once capped (create + stream)
+(async () => {
+  let spent = 0;
+  const fin = { usage: { input_tokens: 3 } };
+  const m = { create: async () => ({ usage: { input_tokens: 5 } }), stream: () => ({ finalMessage: async () => fin }) };
+  lib.enforceCostCap(m, { isCapped: () => spent >= 5, addCost: (u) => { spent += u.input_tokens; }, capError: () => new Error('capped') });
+  m.stream(); await new Promise((r) => setImmediate(r));
+  assert.strictEqual(spent, 3, 'stream usage counted');
+  await m.create();
+  assert.strictEqual(spent, 8, 'create usage counted');
+  await assert.rejects(m.create(), /capped/);
+  assert.throws(() => m.stream(), /capped/);
+  console.log('cost cap wrapper checks passed');
+})().catch((e) => { console.error(e); process.exit(1); });

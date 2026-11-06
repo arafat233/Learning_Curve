@@ -121,4 +121,21 @@ function localScoreDetails(question, answer) {
   return { clarity, structure, specificity, confidence, technicalDepth, wordCount, hasMetric, hasHedge, qType };
 }
 
-module.exports = { localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };
+const RATES = { 'claude-opus-5': [5, 25], 'claude-sonnet-5': [2, 10], 'claude-haiku-4-5': [1, 5] };
+// USD for one response's token usage; unknown models are billed at the top rate (safe for a cap).
+const usageCost = (model, u) => { const r = RATES[model] || [5, 25]; return ((u.input_tokens || 0) * r[0] + (u.output_tokens || 0) * r[1]) / 1e6; };
+const capReached = (cap, spent) => Number(cap) > 0 && spent >= Number(cap);
+
+// Wraps an Anthropic `messages` object so every create/stream call is blocked past the cap and its usage is counted.
+function enforceCostCap(m, { isCapped, addCost, capError }) {
+  const create = m.create.bind(m), stream = m.stream.bind(m);
+  m.create = async (...a) => { if (isCapped()) throw capError(); const r = await create(...a); if (r.usage) addCost(r.usage); return r; };
+  m.stream = (...a) => {
+    if (isCapped()) throw capError();
+    const st = stream(...a);
+    st.finalMessage().then(fm => { if (fm.usage) addCost(fm.usage); }).catch(() => {});
+    return st;
+  };
+}
+
+module.exports = { enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };

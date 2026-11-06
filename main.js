@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { spawn, spawnSync } = require('child_process');
-const { localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
+const { enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
 
 // --- tiny .env loader (no dependency) ---
 // Looks next to the source AND next to the packaged .exe, so a built app can
@@ -270,10 +270,9 @@ function contextBlock() {
 }
 
 // --- cost / latency tracking ---
-const RATES = { 'claude-opus-5': [5, 25], 'claude-sonnet-5': [2, 10], 'claude-haiku-4-5': [1, 5] };
 let sessionCost = 0, lastQ = '', lastA = '', sessionResearch = '';
-const costCapReached = () => Number(settings.maxSessionCost) > 0 && sessionCost >= Number(settings.maxSessionCost);
-function addCost(u) { const r = RATES[settings.model] || [5, 25]; sessionCost += ((u.input_tokens || 0) * r[0] + (u.output_tokens || 0) * r[1]) / 1e6; }
+const costCapReached = () => capReached(settings.maxSessionCost, sessionCost);
+function addCost(u) { sessionCost += usageCost(settings.model, u); }
 let activeSession = readJsonFile('active-session.json', null);
 
 function startInterviewSession(meta = {}) {
@@ -341,16 +340,7 @@ const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 const { modelText, localVisionText } = require('./backends')({ getSettings: () => settings, getAnthropic: () => anthropic });
 // Count cost and enforce the session cap for every call in one place (create + stream).
 const capError = () => new Error(`Session cost cap ($${settings.maxSessionCost}) reached. Raise it in Settings to continue.`);
-{
-  const m = anthropic.messages, create = m.create.bind(m), stream = m.stream.bind(m);
-  m.create = async (...a) => { if (costCapReached()) throw capError(); const r = await create(...a); if (r.usage) addCost(r.usage); return r; };
-  m.stream = (...a) => {
-    if (costCapReached()) throw capError();
-    const st = stream(...a);
-    st.finalMessage().then(fm => { if (fm.usage) addCost(fm.usage); }).catch(() => {});
-    return st;
-  };
-}
+enforceCostCap(anthropic.messages, { isCapped: costCapReached, addCost, capError });
 let win, settingsWin = null, regionWin = null;
 
 // --- session history ---
