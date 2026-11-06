@@ -21,7 +21,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
     "@huggingface/transformers": "^4.2.0",
-    "sherpa-onnx-node": "^1.13.6",
+    "sherpa-onnx-node": "^2.0.1",
     "typescript": "^5.9.3"
   },
   "overrides": {
