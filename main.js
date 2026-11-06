@@ -21,7 +21,7 @@ function loadEnv() {
 }
 loadEnv();
 
-const { DATA_DIR, dataFile, readTextFile, writeTextFile, readJsonFile, writeJsonFile } = require('./storage');
+const { makeLogTurn, DATA_DIR, dataFile, readTextFile, writeTextFile, readJsonFile, writeJsonFile } = require('./storage');
 function startLocalModelProcess() {
   if (localModelProc && !localModelProc.killed) return 'Local model process is already running.';
   const cmd = String(settings.localModelStartCommand || '').trim();
@@ -343,17 +343,7 @@ const capError = () => new Error(`Session cost cap ($${settings.maxSessionCost})
 enforceCostCap(anthropic.messages, { isCapped: costCapReached, addCost, capError });
 let win, settingsWin = null, regionWin = null;
 
-// --- session history ---
-const LOG_MAX_BYTES = 2 * 1024 * 1024, LOG_KEEP_LINES = 2000;
-function logTurn(kind, q, a) {
-  const file = dataFile('session.log');
-  try {
-    fs.appendFileSync(file, JSON.stringify({ t: new Date().toISOString(), sessionId: activeSession?.id || null, kind, q, a }) + '\n');
-    if (fs.statSync(file).size > LOG_MAX_BYTES) {
-      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').trim().split('\n').slice(-LOG_KEEP_LINES).join('\n') + '\n');
-    }
-  } catch {}
-}
+const logTurn = makeLogTurn(() => activeSession?.id || null);
 
 // --- warm Claude CLI process (subscription-backed answer path) ---
 let cli = null, cliBuf = '', cliEvt = null, cliQ = '', cliFull = '';

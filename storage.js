@@ -35,4 +35,16 @@ function writeJsonFile(name, value) {
   writeTextFile(name, JSON.stringify(value, null, 2));
 }
 
-module.exports = { DATA_DIR, dataFile, readTextFile, writeTextFile, readJsonFile, writeJsonFile };
+// Append-only turn log (session.log), trimmed to the newest lines once it passes the size limit.
+const LOG_MAX_BYTES = 2 * 1024 * 1024, LOG_KEEP_LINES = 2000;
+const makeLogTurn = (getSessionId, maxBytes = LOG_MAX_BYTES) => (kind, q, a) => {
+  const file = dataFile('session.log');
+  try {
+    fs.appendFileSync(file, JSON.stringify({ t: new Date().toISOString(), sessionId: getSessionId(), kind, q, a }) + '\n');
+    if (fs.statSync(file).size > maxBytes) {
+      fs.writeFileSync(file, fs.readFileSync(file, 'utf8').trim().split('\n').slice(-LOG_KEEP_LINES).join('\n') + '\n');
+    }
+  } catch {}
+};
+
+module.exports = { makeLogTurn, DATA_DIR, dataFile, readTextFile, writeTextFile, readJsonFile, writeJsonFile };
