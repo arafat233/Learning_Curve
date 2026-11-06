@@ -45,7 +45,7 @@ function writeJsonFile(name, value) {
 // One OpenAI-compatible chat call; errors come back as text so callers can show them inline.
 async function localChat(label, endpoint, model, max_tokens, messages) {
   try {
-    if (!/\/v1\/chat\/completionsb/i.test(endpoint)) throw new Error(`${label} endpoint must be OpenAI-compatible /v1/chat/completions.`);
+    if (!/\/v1\/chat\/completions\b/i.test(endpoint)) throw new Error(`${label} endpoint must be OpenAI-compatible /v1/chat/completions.`);
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
