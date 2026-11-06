@@ -107,3 +107,23 @@ console.log('cost cap checks passed');
   assert(md.includes('Target: SWE at company') && md.includes('## Pinned') && !md.includes('## Prep Pack'), 'empty sections omitted');
   console.log('export checks passed');
 }
+
+// CLI backend routing (fake runner, no real claude process)
+(async () => {
+  const be = require('../backends');
+  let called = [], settings = { backend: 'cli' };
+  const m = { create: async () => 'api-create', stream: () => 'api-stream' };
+  be.useCliWhenSelected(m, () => settings, async (prompt, model) => { called.push([prompt, model]); return 'cli says hi'; });
+  const r = await m.create({ model: 'mm', system: 'SYS', messages: [{ role: 'user', content: 'Q?' }] });
+  assert.strictEqual(r.content[0].text, 'cli says hi');
+  assert(called[0][0].includes('SYS') && called[0][0].includes('Q?') && called[0][1] === 'mm');
+  const st = m.stream({ model: 'mm', messages: [{ role: 'user', content: 'x' }] });
+  let got = ''; st.on('text', (t) => { got += t; });
+  await st.finalMessage();
+  assert.strictEqual(got, 'cli says hi', 'stream emits text to handlers');
+  await assert.rejects(m.create({ model: 'mm', messages: [{ role: 'user', content: [{ type: 'image' }] }] }), /Images are not supported/);
+  settings = { backend: 'api' };
+  assert.strictEqual(await m.create({}), 'api-create', 'api backend untouched');
+  assert(be.cliPrompt('', [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }]).includes('Assistant: b'));
+  console.log('cli backend checks passed');
+})().catch((e) => { console.error(e); process.exit(1); });

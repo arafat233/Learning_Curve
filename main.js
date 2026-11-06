@@ -341,6 +341,7 @@ const { modelText, localVisionText } = require('./backends')({ getSettings: () =
 // Count cost and enforce the session cap for every call in one place (create + stream).
 const capError = () => new Error(`Session cost cap ($${settings.maxSessionCost}) reached. Raise it in Settings to continue.`);
 enforceCostCap(anthropic.messages, { isCapped: costCapReached, addCost, capError });
+require('./backends').useCliWhenSelected(anthropic.messages, () => settings); // CLI backend needs no API key
 let win, settingsWin = null, regionWin = null;
 
 const logTurn = makeLogTurn(() => activeSession?.id || null);
