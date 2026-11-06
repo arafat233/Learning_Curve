@@ -1,4 +1,4 @@
-const { app, safeStorage, BrowserWindow, globalShortcut, session, ipcMain, desktopCapturer, screen, shell, clipboard } = require('electron');
+const { app, BrowserWindow, globalShortcut, session, ipcMain, desktopCapturer, screen, shell, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -21,38 +21,7 @@ function loadEnv() {
 }
 loadEnv();
 
-// --- user data files ---
-// Runtime data belongs in Electron's userData folder, not next to source or the packaged exe.
-const DATA_DIR = app.getPath('userData');
-try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
-const dataFile = (name) => path.join(DATA_DIR, name);
-const legacyFile = (name) => path.join(__dirname, name);
-// Files holding personal data are encrypted at rest with the OS keystore (legacy plaintext still reads fine).
-const SECRET_FILES = new Set(['context.txt', 'profiles.json']);
-const canEncrypt = () => app.isReady() && safeStorage.isEncryptionAvailable();
-function decode(name, raw) {
-  if (!raw.startsWith('enc:')) return raw;
-  if (!canEncrypt()) throw new Error('keystore unavailable');
-  return safeStorage.decryptString(Buffer.from(raw.slice(4), 'base64'));
-}
-function readTextFile(name, fallback = '') {
-  for (const file of [dataFile(name), legacyFile(name)]) {
-    try { return decode(name, fs.readFileSync(file, 'utf8')); } catch {}
-  }
-  return fallback;
-}
-function writeTextFile(name, value) {
-  try {
-    const out = SECRET_FILES.has(name) && canEncrypt() ? 'enc:' + safeStorage.encryptString(String(value)).toString('base64') : value;
-    fs.writeFileSync(dataFile(name), out);
-  } catch {}
-}
-function readJsonFile(name, fallback) {
-  try { return JSON.parse(readTextFile(name, '')); } catch { return fallback; }
-}
-function writeJsonFile(name, value) {
-  writeTextFile(name, JSON.stringify(value, null, 2));
-}
+const { DATA_DIR, dataFile, readTextFile, writeTextFile, readJsonFile, writeJsonFile } = require('./storage');
 function startLocalModelProcess() {
   if (localModelProc && !localModelProc.killed) return 'Local model process is already running.';
   const cmd = String(settings.localModelStartCommand || '').trim();
@@ -303,6 +272,7 @@ function contextBlock() {
 // --- cost / latency tracking ---
 const RATES = { 'claude-opus-5': [5, 25], 'claude-sonnet-5': [2, 10], 'claude-haiku-4-5': [1, 5] };
 let sessionCost = 0, lastQ = '', lastA = '', sessionResearch = '';
+const costCapReached = () => Number(settings.maxSessionCost) > 0 && sessionCost >= Number(settings.maxSessionCost);
 function addCost(u) { const r = RATES[settings.model] || [5, 25]; sessionCost += ((u.input_tokens || 0) * r[0] + (u.output_tokens || 0) * r[1]) / 1e6; }
 let activeSession = readJsonFile('active-session.json', null);
 
@@ -369,11 +339,13 @@ let localModelProc = null;
 
 const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY from env
 const { modelText, localVisionText } = require('./backends')({ getSettings: () => settings, getAnthropic: () => anthropic });
-// Count cost for every call in one place (create + stream).
+// Count cost and enforce the session cap for every call in one place (create + stream).
+const capError = () => new Error(`Session cost cap ($${settings.maxSessionCost}) reached. Raise it in Settings to continue.`);
 {
   const m = anthropic.messages, create = m.create.bind(m), stream = m.stream.bind(m);
-  m.create = async (...a) => { const r = await create(...a); if (r.usage) addCost(r.usage); return r; };
+  m.create = async (...a) => { if (costCapReached()) throw capError(); const r = await create(...a); if (r.usage) addCost(r.usage); return r; };
   m.stream = (...a) => {
+    if (costCapReached()) throw capError();
     const st = stream(...a);
     st.finalMessage().then(fm => { if (fm.usage) addCost(fm.usage); }).catch(() => {});
     return st;
@@ -1344,7 +1316,7 @@ ipcMain.on('ask', async (evt, { question, transcript, overrides = {} }) => {
     evt.sender.send('answer-done');
     return;
   }
-  if (settings.backend === 'api' && Number(settings.maxSessionCost) > 0 && sessionCost >= Number(settings.maxSessionCost)) {
+  if (settings.backend === 'api' && costCapReached()) {
     evt.sender.send('answer-error', `Session cost cap ($${settings.maxSessionCost}) reached. Raise maxSessionCost in settings.json to continue.`);
     return;
   }
