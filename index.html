@@ -453,13 +453,13 @@ window.api.onSherpaResult(({ who, text, ended, drives }) => {
 });
 
 async function startDeepgram(stream, who, drives){
-  const key = await window.api.getDeepgramKey();
+  const { key, scheme } = await window.api.getDeepgramKey();
   if (!key) { msg.textContent = 'No DEEPGRAM_API_KEY in .env'; return; }
 
   const url = 'wss://api.deepgram.com/v1/listen'
     + '?model=nova-2&smart_format=true&interim_results=true'
     + '&punctuate=true&endpointing=300&language=' + encodeURIComponent(settings.sttLang || 'en-US');
-  const ws = new WebSocket(url, ['token', key]);
+  const ws = new WebSocket(url, [scheme, key]);
 
   ws.onopen = () => {
     $('livedot').classList.add('on'); msg.textContent = 'transcribing';

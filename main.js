@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { spawn, spawnSync } = require('child_process');
+const { compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
 
 // --- tiny .env loader (no dependency) ---
 // Looks next to the source AND next to the packaged .exe, so a built app can
@@ -401,16 +402,6 @@ async function sendTelemetry(event, data = {}) {
   }
 }
 
-function compareVersions(a, b) {
-  const pa = String(a || '').split('.').map(n => parseInt(n, 10) || 0);
-  const pb = String(b || '').split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
-    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
-  }
-  return 0;
-}
-
 // --- window position persistence ---
 function saveBounds() {
   if (!win || win.isDestroyed() || compact) return;
@@ -530,13 +521,14 @@ function createWindow() {
     width: saved?.width || 460, height: saved?.height || 640,
     x: saved?.x ?? 40, y: saved?.y ?? 40,
     frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   normalHeight = saved?.height || 640;
   win.setContentProtection(true);
   win.setAlwaysOnTop(true, 'screen-saver');
   win.on('moved', saveBounds);
   win.on('resized', saveBounds);
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(['media', 'display-capture', 'clipboard-sanitized-write'].includes(perm)));
   session.defaultSession.setDisplayMediaRequestHandler((request, cb) => {
     cb({ video: false, audio: 'loopback' });
   }, { useSystemPicker: false });
@@ -544,7 +536,16 @@ function createWindow() {
 }
 
 // --- config IPC ---
-ipcMain.handle('deepgram-key', () => process.env.DEEPGRAM_API_KEY || '');
+// Hand the renderer a 60s temp token, not the raw key; fall back to the key if the grant call fails.
+ipcMain.handle('deepgram-key', async () => {
+  const key = process.env.DEEPGRAM_API_KEY || '';
+  if (!key) return { key: '', scheme: 'token' };
+  try {
+    const r = await fetch('https://api.deepgram.com/v1/auth/grant', { method: 'POST', headers: { Authorization: 'Token ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl_seconds: 60 }) });
+    if (r.ok) return { key: (await r.json()).access_token, scheme: 'bearer' };
+  } catch {}
+  return { key, scheme: 'token' };
+});
 ipcMain.handle('get-settings', () => settings);
 ipcMain.handle('get-context', () => loadContext());
 ipcMain.handle('get-profiles', () => readProfiles());
@@ -969,61 +970,6 @@ ipcMain.handle('smart-answer', async (evt, payload) => {
   });
 });
 
-const SCENARIOS = [
-  { id: 'faang-backend', name: 'FAANG backend round', track: 'backend', interviewType: 'coding', mockStyle: 'confidence' },
-  { id: 'startup-cto', name: 'Startup CTO screen', track: 'backend', interviewType: 'system-design', mockStyle: 'confidence' },
-  { id: 'product-sense', name: 'Product sense round', track: 'pm', interviewType: 'auto', mockStyle: 'standard' },
-  { id: 'system-design-deep', name: 'System design deep dive', track: 'system-design', interviewType: 'system-design', mockStyle: 'confidence' },
-  { id: 'bar-raiser', name: 'Behavioral bar raiser', track: 'behavioral', interviewType: 'behavioral', mockStyle: 'confidence' },
-  { id: 'hiring-manager', name: 'Final hiring manager round', track: 'general', interviewType: 'recruiter', mockStyle: 'standard' },
-];
-const PERSONAS = [
-  { id: 'staff-engineer', name: 'Strict staff engineer', prompt: 'Act like a senior staff engineer. Probe tradeoffs, correctness, scale, and ambiguity.' },
-  { id: 'friendly-recruiter', name: 'Friendly recruiter', prompt: 'Act like a friendly recruiter. Focus on motivation, clarity, role fit, logistics, and concise examples.' },
-  { id: 'skeptical-manager', name: 'Skeptical hiring manager', prompt: 'Act like a skeptical hiring manager. Challenge vague impact, ownership, conflict, and decision quality.' },
-  { id: 'system-designer', name: 'System design deep-dive', prompt: 'Act like a system design interviewer. Push on APIs, storage, bottlenecks, failure modes, and scale.' },
-  { id: 'fast-dsa', name: 'Fast DSA interviewer', prompt: 'Act like a fast coding interviewer. Ask concise algorithm questions and push for complexity and edge cases.' },
-];
-const QUESTION_LIBRARY = {
-  behavioral: [
-    'Tell me about a time you handled conflict.',
-    'Describe a failure and what you changed afterward.',
-    'Tell me about a time you influenced without authority.',
-    'What is your proudest project and why?',
-  ],
-  systemDesign: [
-    'Design a URL shortener.',
-    'Design a real-time chat system.',
-    'Design a rate limiter.',
-    'Design an event-driven notification service.',
-  ],
-  coding: [
-    'Find the longest substring without repeating characters.',
-    'Merge overlapping intervals.',
-    'Find the lowest common ancestor in a binary tree.',
-    'Design an LRU cache.',
-  ],
-  recruiter: [
-    'Walk me through your background.',
-    'Why are you interested in this company?',
-    'What are your compensation expectations?',
-    'When could you start?',
-  ],
-  product: [
-    'How would you prioritize a roadmap with limited engineering capacity?',
-    'Define success metrics for a new onboarding flow.',
-    'How would you investigate a drop in conversion?',
-  ],
-};
-const PRIVACY_MATRIX = [
-  ['Live transcription', 'Deepgram sends audio to Deepgram; Sherpa/Whisper stay local.'],
-  ['Live answer generation', 'API backend sends recent transcript, question, and saved profile context to the model provider. CLI backend uses the local Claude CLI. Local backend sends prompts only to the configured local HTTP endpoint.'],
-  ['Company research', 'Sends company and role to the model provider with web search enabled.'],
-  ['Screenshot solve/review', 'Sends the captured screenshot or selected region to the model provider.'],
-  ['Prep pack and reports', 'Sends saved profile context and session history to the model provider.'],
-  ['Telemetry', 'Only product event metadata is sent, and only when telemetry opt-in plus endpoint are configured.'],
-];
-
 ipcMain.handle('get-scenarios', () => SCENARIOS);
 ipcMain.handle('get-personas', () => PERSONAS);
 ipcMain.handle('get-question-library', () => mergedQuestionLibrary());
@@ -1287,15 +1233,6 @@ ipcMain.handle('compare-sessions', async () => {
   }
 });
 
-const PANIC_PHRASES = [
-  'Let me structure that in two parts.',
-  'I want to clarify the goal first.',
-  'The tradeoff I would start with is this.',
-  'A concrete example from my experience is...',
-  'I would first define success, then work backward.',
-  'Let me think through the edge cases out loud.',
-];
-const randomPanicPhrase = () => PANIC_PHRASES[Math.floor(Math.random() * PANIC_PHRASES.length)];
 ipcMain.handle('panic-phrase', randomPanicPhrase);
 
 ipcMain.handle('speaking-report', async () => {
@@ -1759,7 +1696,7 @@ function openRegionSelect() {
   regionWin = new BrowserWindow({
     x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height,
     frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, fullscreen: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   regionWin.setAlwaysOnTop(true, 'screen-saver');
   regionWin.setContentProtection(true);
@@ -1773,7 +1710,7 @@ function openSettings() {
   if (settingsWin) { settingsWin.focus(); return; }
   settingsWin = new BrowserWindow({
     width: 760, height: 820, title: 'AI Interview - Settings',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true },
   });
   settingsWin.setMenuBarVisibility(false);
   settingsWin.loadFile('settings.html');
@@ -1831,17 +1768,6 @@ function sessionMarkdown() {
   ].filter(Boolean).join('\n');
 }
 
-function markdownToHtml(md) {
-  const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return '<!doctype html><meta charset="utf-8"><style>body{font:14px system-ui;line-height:1.5;color:#111;padding:32px;max-width:860px;margin:auto}pre{white-space:pre-wrap}h1,h2,h3{line-height:1.2}</style>' +
-    escHtml(md).split('\n').map(line => {
-      if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`;
-      if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
-      if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`;
-      return line.trim() ? `<p>${line.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')}</p>` : '';
-    }).join('\n');
-}
-
 ipcMain.handle('export-rich-session', async (_evt, format) => {
   const md = sessionMarkdown();
   if (!readSessionTurns().length) return 'No session history yet.';
@@ -1855,7 +1781,7 @@ ipcMain.handle('export-rich-session', async (_evt, format) => {
     }
     if (fmt === 'pdf') {
       const html = markdownToHtml(md);
-      const pdfWin = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true } });
+      const pdfWin = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: true } });
       await pdfWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
       const pdf = await pdfWin.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
       const dest = dataFile('session-export.pdf');
@@ -1946,8 +1872,9 @@ function runLocalCode(language, code, timeoutMs = 5000) {
       try { child.kill(); } catch {}
       resolve(`Timed out after ${timeoutMs}ms.\n${out}${err ? '\nErrors:\n' + err : ''}`);
     }, timeoutMs);
-    child.stdout.on('data', d => out += d.toString());
-    child.stderr.on('data', d => err += d.toString());
+    const MAX_OUT = 20000; // cap runaway output
+    child.stdout.on('data', d => { if (out.length < MAX_OUT) out += d.toString().slice(0, MAX_OUT - out.length); });
+    child.stderr.on('data', d => { if (err.length < MAX_OUT) err += d.toString().slice(0, MAX_OUT - err.length); });
     child.on('close', code => {
       if (done) return;
       done = true;
@@ -1958,9 +1885,9 @@ function runLocalCode(language, code, timeoutMs = 5000) {
 }
 
 ipcMain.handle('run-coding-tests', async (_evt, payload) => {
-  const problem = payload?.problem || '';
-  const language = payload?.language || 'Python';
-  const code = payload?.code || '';
+  const problem = String(payload?.problem || '');
+  const language = String(payload?.language || 'Python');
+  const code = String(payload?.code || '');
   if (!problem) return 'Paste or extract a coding problem first.';
   let localRun = '';
   if (code.trim()) localRun = await runLocalCode(language, code);
@@ -2065,7 +1992,17 @@ ipcMain.on('mock-report', async (evt) => {
   }
 });
 
-app.whenReady().then(() => {
+process.on('uncaughtException', (e) => console.error('uncaughtException:', e));
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e));
+
+// Lock down every window: no popups, no navigation away from local files, no device/permission prompts.
+app.on('web-contents-created', (_e, wc) => {
+  wc.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  wc.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault(); });
+});
+
+if (process.env.AI_INTERVIEW_SMOKE !== '1' && !app.requestSingleInstanceLock()) app.quit();
+else app.whenReady().then(() => {
   createWindow();
   if (process.env.AI_INTERVIEW_SMOKE === '1') {
     runSmokeCheck();
