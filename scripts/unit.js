@@ -5,7 +5,7 @@ const path = require('path');
 
 // every ipcRenderer channel the preload uses must have a handler in main.js
 const root = path.join(__dirname, '..');
-const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+const main = ['main.js', 'sherpa.js'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join(" ");
 const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
 const used = [...preload.matchAll(/ipcRenderer\.(?:invoke|send)\('([\w-]+)'/g)].map((m) => m[1]);
 assert(used.length > 20, 'preload channels not found');
