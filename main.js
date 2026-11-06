@@ -1767,9 +1767,9 @@ function runLocalCode(language, code, timeoutMs = 5000) {
       fs.writeFileSync(path.join(dir, 'solution.cpp'), code || '');
       const cpp = cppToolStatus();
       if (cpp.compiler === 'g++') {
-        child = spawn('cmd', ['/c', 'g++ solution.cpp -std=c++17 -O2 -o solution.exe && solution.exe'], { cwd: dir, shell: false });
+        child = spawn('cmd', ['/c', 'g++ solution.cpp -std=c++17 -O2 -o solution.exe && .\\solution.exe'], { cwd: dir, shell: false });
       } else if (cpp.compiler === 'clang++') {
-        child = spawn('cmd', ['/c', 'clang++ solution.cpp -std=c++17 -O2 -o solution.exe && solution.exe'], { cwd: dir, shell: false });
+        child = spawn('cmd', ['/c', 'clang++ solution.cpp -std=c++17 -O2 -o solution.exe && .\\solution.exe'], { cwd: dir, shell: false });
       } else if (cpp.compiler === 'msvc') {
         const vcvars = cpp.path.toLowerCase().endsWith('vcvars64.bat') ? cpp.path : findMsvcVcvars();
         if (!vcvars) return resolve('MSVC was found, but vcvars64.bat was not found to configure the compiler environment.');
@@ -1779,9 +1779,9 @@ function runLocalCode(language, code, timeoutMs = 5000) {
           'if errorlevel 1 exit /b %errorlevel%',
           'cl /nologo /EHsc /std:c++17 solution.cpp /Fe:solution.exe',
           'if errorlevel 1 exit /b %errorlevel%',
-          'solution.exe',
+          '.\\solution.exe',
         ].join('\r\n'));
-        child = spawn('cmd', ['/d', '/c', 'run-msvc.bat'], { cwd: dir, shell: false });
+        child = spawn('cmd', ['/d', '/c', '.\\run-msvc.bat'], { cwd: dir, shell: false });
       } else {
         return resolve('No C++ compiler found. Install g++, clang++, or Visual Studio Build Tools with C++ support.');
       }

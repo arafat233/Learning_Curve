@@ -70,9 +70,9 @@ if (commandPath('go.exe')) {
 
 fs.writeFileSync(path.join(dir, 'solution.cpp'), '#include <iostream>\nint main(){ std::cout << 42 << std::endl; return 0; }\n');
 if (commandPath('g++.exe')) {
-  run('cpp-g++', 'cmd', ['/d', '/s', '/c', 'g++ solution.cpp -std=c++17 -O2 -o solution.exe && solution.exe'], { cwd: dir });
+  run('cpp-g++', 'cmd', ['/d', '/s', '/c', 'g++ solution.cpp -std=c++17 -O2 -o solution.exe && .\\solution.exe'], { cwd: dir });
 } else if (commandPath('clang++.exe')) {
-  run('cpp-clang', 'cmd', ['/d', '/s', '/c', 'clang++ solution.cpp -std=c++17 -O2 -o solution.exe && solution.exe'], { cwd: dir });
+  run('cpp-clang', 'cmd', ['/d', '/s', '/c', 'clang++ solution.cpp -std=c++17 -O2 -o solution.exe && .\\solution.exe'], { cwd: dir });
 } else {
   const vcvars = findMsvcVcvars();
   if (!vcvars) throw new Error('No C++ compiler found: g++, clang++, and MSVC vcvars64.bat are unavailable.');
@@ -82,9 +82,9 @@ if (commandPath('g++.exe')) {
     'if errorlevel 1 exit /b %errorlevel%',
     'cl /nologo /EHsc /std:c++17 solution.cpp /Fe:solution.exe',
     'if errorlevel 1 exit /b %errorlevel%',
-    'solution.exe',
+    '.\\solution.exe',
   ].join('\r\n'));
-  run('cpp-msvc', 'cmd', ['/d', '/c', 'run-msvc.bat'], { cwd: dir });
+  run('cpp-msvc', 'cmd', ['/d', '/c', '.\\run-msvc.bat'], { cwd: dir });
 }
 
 console.log('Runtime smoke test passed.');
