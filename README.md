@@ -28,6 +28,11 @@ Keys are read from `.env` next to the source or the packaged `.exe`. Deepgram is
 | Ctrl+Shift+M | Next monitor |
 | Ctrl+Alt+Arrows | Snap window |
 
+## Practice features
+- **Mock** mode: the AI interviews you. **Voice** reads its questions aloud (use headphones so it doesn't hear itself) and a 90s timer starts after each question.
+- Settings → Practice → **Review weakest answer** re-asks the question you scored lowest on.
+- Settings → **Export / Import backup** saves profiles, sessions and reports to one JSON file. The file is not encrypted.
+
 ## Scripts
 - `npm test` — static logic checks (IPC channels wired, env keys documented)
 - `npm run smoke` / `npm run runtime-smoke` — boot Electron / check local runtimes
