@@ -27,3 +27,15 @@ assert(lib.markdownToHtml('<script>').includes('&lt;script&gt;'), 'html must be 
 for (const list of [lib.SCENARIOS, lib.PERSONAS]) assert.strictEqual(new Set(list.map((x) => x.id)).size, list.length, 'duplicate ids');
 assert(lib.randomPanicPhrase().length > 0);
 console.log('lib checks passed');
+
+// backends.js: local chat path + endpoint validation + local-only guard
+(async () => {
+  const mk = (s) => require('../backends')({ getSettings: () => s, getAnthropic: () => { throw new Error('no cloud'); } });
+  const realFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: ' hi ' } }] }) });
+  assert.strictEqual(await mk({ backend: 'local' }).modelText({ user: 'x' }), 'hi');
+  assert((await mk({ backend: 'local', localModelEndpoint: 'http://x/bad' }).modelText({ user: 'x' })).includes('must be OpenAI-compatible'));
+  assert((await mk({ backend: 'api', localOnly: true }).modelText({ user: 'x' })).includes('Local-only'));
+  global.fetch = realFetch;
+  console.log('backend checks passed');
+})().catch((e) => { console.error(e); process.exit(1); });

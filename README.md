@@ -34,3 +34,6 @@ Keys are read from `.env` next to the source or the packaged `.exe`. Deepgram is
 - `npm run dist` — package to `dist/` with electron-packager
 
 User data (settings, profiles, session logs) lives in Electron's `userData` folder; Settings has a delete-all option.
+
+## Updates
+Host a JSON file shaped like `docs/update-feed.sample.json` (e.g. as a raw GitHub file or release asset) and paste its URL into Settings → update feed URL. "Check for updates" compares `version` to the app version and links to `downloadUrl`.
