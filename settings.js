@@ -549,6 +549,14 @@ ${kinds || '- No turns yet.'}`;
     const result = await window.api.runDrill({ track: $('drillTrack').value });
     $('questionLibraryOut').textContent = `Question:\n${result.question}\n\nCoach:\n${result.coach}`;
   };
+  $('reviewWeak').onclick = async () => {
+    const result = await window.api.runDrill({ review: true });
+    $('questionLibraryOut').textContent = `Question:
+${result.question}
+
+Coach:
+${result.coach}`;
+  };
   $('saveQuestionLibrary').onclick = async () => {
     qlibData = await window.api.saveQuestionLibrary(parseQuestionLibraryEdit());
     renderQuestionLibrary();

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
 const { spawn, spawnSync } = require('child_process');
-const { buildSessionMarkdown, enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
+const { pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml } = require('./lib');
 
 // --- tiny .env loader (no dependency) ---
 // Looks next to the source AND next to the packaged .exe, so a built app can
@@ -935,7 +935,14 @@ ipcMain.handle('build-story-bank', async () => {
   }
 });
 
+const recentReviews = [];
 ipcMain.handle('run-drill', async (_evt, payload) => {
+  if (payload?.review) {
+    const pick = pickReviewQuestion(readSessionTurns(), recentReviews);
+    if (!pick) return { question: 'Nothing to review yet.', coach: 'Answer some questions in Live or Mock mode first. Questions you score below 7 will show up here.' };
+    recentReviews.push(pick.question); if (recentReviews.length > 10) recentReviews.shift();
+    return { question: pick.question, coach: `Your last score on this was ${pick.score}/10. Answer it again out loud, then use Replay trainer for feedback.` };
+  }
   const track = payload?.track || settings.practiceTrack || 'behavioral';
   const library = mergedQuestionLibrary();
   const pool = library[track] || library.behavioral;

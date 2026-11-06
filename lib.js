@@ -155,4 +155,15 @@ function buildSessionMarkdown({ turns, profile, settings, pinned, prep, report }
   ].filter(Boolean).join('\n');
 }
 
-module.exports = { buildSessionMarkdown, enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };
+// Spaced-repetition pick: the past question whose latest scored answer was weakest (avg < 7), skipping placeholders.
+// `recent` = questions drilled lately, skipped so the same one doesn't repeat.
+function pickReviewQuestion(turns, recent = []) {
+  const latest = new Map();
+  for (const t of turns) if (t.score && t.q && !/^\[/.test(t.q)) latest.set(t.q, t);
+  const keys = ['clarity', 'structure', 'specificity', 'confidence', 'technicalDepth'];
+  const avg = (s) => keys.reduce((n, k) => n + (s[k] || 0), 0) / keys.length;
+  const due = [...latest.values()].filter(t => avg(t.score) < 7 && !recent.includes(t.q)).sort((a, b) => avg(a.score) - avg(b.score));
+  return due[0] ? { question: due[0].q, score: Math.round(avg(due[0].score) * 10) / 10 } : null;
+}
+
+module.exports = { pickReviewQuestion, buildSessionMarkdown, enforceCostCap, usageCost, capReached, RATES, localClassifyQuestion, localScoreDetails, compareVersions, SCENARIOS, PERSONAS, QUESTION_LIBRARY, PRIVACY_MATRIX, randomPanicPhrase, markdownToHtml };

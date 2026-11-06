@@ -131,3 +131,16 @@ console.log('cost cap checks passed');
   assert(be.cliPrompt('', [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }]).includes('Assistant: b'));
   console.log('cli backend checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// spaced repetition pick
+{
+  const sc = (n) => ({ clarity: n, structure: n, specificity: n, confidence: n, technicalDepth: n });
+  const turns = [
+    { q: 'A', score: sc(4) }, { q: 'A', score: sc(9) },          // A improved: no longer due
+    { q: 'B', score: sc(5) }, { q: 'C', score: sc(3) }, { q: '[screenshot]', score: sc(1) }, { q: 'D' },
+  ];
+  assert.strictEqual(lib.pickReviewQuestion(turns).question, 'C', 'weakest latest score first');
+  assert.strictEqual(lib.pickReviewQuestion(turns, ['C']).question, 'B', 'recent skipped');
+  assert.strictEqual(lib.pickReviewQuestion(turns, ['C', 'B']), null, 'nothing due');
+  console.log('review pick checks passed');
+}
